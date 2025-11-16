@@ -26,7 +26,8 @@ function ContentApp() {
     height: number;
   } | null>(null);
   const [hoverSelector, setHoverSelector] = useState<string>("");
-  const [hoverSelectorUpdatedAt, setHoverSelectorUpdatedAt] = useState<number>(0);
+  const [hoverSelectorUpdatedAt, setHoverSelectorUpdatedAt] =
+    useState<number>(0);
 
   // 텍스트 입력 모달 상태
   const [showTextInput, setShowTextInput] = useState(false);
@@ -200,9 +201,9 @@ function ContentApp() {
       }
       // nth-child
       let idx = 1;
-      let sib = node;
+      let sib: Element | null = node;
       while ((sib = sib.previousElementSibling as Element | null)) {
-        if (sib.tagName === node.tagName) idx++;
+        if (sib && sib.tagName === node.tagName) idx++;
       }
       part += `:nth-of-type(${idx})`;
       parts.unshift(part);
@@ -217,13 +218,15 @@ function ContentApp() {
     let typingTimer: number | null = null;
     let typingSelector: string | null = null;
     let typingValue: string = "";
+    const lastSelectValue: Record<string, string> = {};
 
     const handleRecordState = (msg: RecordStateUpdatedMessage) => {
       if (msg.type === "RECORD_STATE") {
         recording = msg.recording;
       }
     };
-    const onMessage = (msg: any) => handleRecordState(msg as RecordStateUpdatedMessage);
+    const onMessage = (msg: any) =>
+      handleRecordState(msg as RecordStateUpdatedMessage);
     browser.runtime.onMessage.addListener(onMessage);
 
     // 초기 레코딩 상태 질의 (리로드/네비게이션 후 지속)
@@ -248,27 +251,25 @@ function ContentApp() {
     const flushTyping = () => {
       if (!recording || !autoCapture) return;
       if (!typingSelector) return;
-      
+
       // 타이머 즉시 정리 (중복 flush 방지)
       if (typingTimer) {
         window.clearTimeout(typingTimer);
         typingTimer = null;
       }
-      
+
       const value = typingValue ?? "";
       const masked = value ? "*".repeat(value.length) : "";
       const step: Step = {
         type: "type",
         selector: typingSelector,
         text: masked,
-        // @ts-expect-error preserve original for replay
         originalText: value,
-        // @ts-expect-error include submit flag when Enter used
         submit: typingSubmit || undefined,
         url: window.location.href,
       } as any;
       browser.runtime.sendMessage({ type: "REC_STEP", step }).catch(() => {});
-      
+
       // 상태 초기화
       typingSelector = null;
       typingValue = "";
@@ -282,11 +283,13 @@ function ContentApp() {
       // 우리 툴바나 루트 클릭은 무시
       if (el.closest("#automation-wizard-root")) return;
       // 레코딩 중 새 탭 열림을 same-tab 네비로 강제
-      const linkEl = (el.closest && el.closest("a[href]")) as HTMLAnchorElement | null;
+      const linkEl = (el.closest &&
+        el.closest("a[href]")) as HTMLAnchorElement | null;
       if (linkEl && linkEl.href) {
         const isMiddleClick = e.button === 1;
         const isModifierOpen = e.metaKey === true || e.ctrlKey === true;
-        const opensNewTab = linkEl.target === "_blank" || isMiddleClick || isModifierOpen;
+        const opensNewTab =
+          linkEl.target === "_blank" || isMiddleClick || isModifierOpen;
         if (opensNewTab) {
           try {
             e.preventDefault();
@@ -296,7 +299,9 @@ function ContentApp() {
             window.location.href = linkEl.href;
           } catch {}
           const navStep: Step = { type: "navigate", url: linkEl.href } as any;
-          browser.runtime.sendMessage({ type: "REC_STEP", step: navStep }).catch(() => {});
+          browser.runtime
+            .sendMessage({ type: "REC_STEP", step: navStep })
+            .catch(() => {});
           return;
         }
       }
@@ -304,16 +309,14 @@ function ContentApp() {
       const tag = el.tagName?.toLowerCase();
       if (tag === "select" || tag === "option") return;
       if (el.closest("select")) return;
-      
+
       const selector = getSimpleSelector(el);
       const step: Step = {
         type: "click",
         selector,
         url: window.location.href,
       };
-      browser.runtime
-        .sendMessage({ type: "REC_STEP", step })
-        .catch(() => {});
+      browser.runtime.sendMessage({ type: "REC_STEP", step }).catch(() => {});
     };
 
     // Shift+Tab 시 활성 요소 값 추출 Step 기록
@@ -341,9 +344,7 @@ function ContentApp() {
           prop,
           url: window.location.href,
         } as any;
-        browser.runtime
-          .sendMessage({ type: "REC_STEP", step })
-          .catch(() => {});
+        browser.runtime.sendMessage({ type: "REC_STEP", step }).catch(() => {});
       }
     };
 
@@ -354,33 +355,32 @@ function ContentApp() {
       if (!el) return;
       if (el.closest && el.closest("#automation-wizard-root")) return;
       const tag = el.tagName?.toLowerCase?.() || "";
-      
+
       // select 요소 처리
       if (tag === "select") {
         const selector = getSimpleSelector(el);
         const value: string = el.value ?? "";
-        
+
         // 중복 방지
         if (lastSelectValue[selector] === value) return;
         lastSelectValue[selector] = value;
-        
+
         console.log("Select input detected:", { selector, value });
-        
+
         const step: Step = {
           type: "select",
           selector,
-          // @ts-expect-error Step select value
           value,
           url: window.location.href,
         } as any;
         browser.runtime.sendMessage({ type: "REC_STEP", step }).catch(() => {});
         return;
       }
-      
+
       // text input/textarea 처리
       const isTextField = tag === "input" || tag === "textarea";
       if (!isTextField) return;
-      
+
       const selector = getSimpleSelector(el);
       const value: string = el.value ?? "";
       typingSelector = selector;
@@ -409,6 +409,13 @@ function ContentApp() {
             e.preventDefault();
             e.stopPropagation();
           } catch {}
+
+          // 기존 타이핑 타이머를 먼저 정리 (중복 레코딩 방지)
+          if (typingTimer) {
+            window.clearTimeout(typingTimer);
+            typingTimer = null;
+          }
+
           typingSubmit = true;
           // active가 존재하면 selector 갱신 보조
           try {
@@ -477,19 +484,18 @@ function ContentApp() {
       if (el.closest && el.closest("#automation-wizard-root")) return;
       const tag = el.tagName?.toLowerCase?.() || "";
       if (tag !== "select") return;
-      
+
       console.log("Select change detected:", el);
       const selector = getSimpleSelector(el);
       const value: string = el.value ?? "";
       const selectedOption = el.options?.[el.selectedIndex];
       const selectedText = selectedOption?.text || value;
-      
+
       console.log("Recording select:", { selector, value, selectedText });
-      
+
       const step: Step = {
         type: "select",
         selector,
-        // @ts-expect-error Step select value
         value,
         url: window.location.href,
       } as any;
@@ -520,7 +526,7 @@ function ContentApp() {
   useEffect(() => {
     if (!recordingOn) return;
     const originalOpen = window.open;
-    // @ts-expect-error override
+
     window.open = function (url: any, target?: any, features?: any) {
       if (typeof url === "string" && url) {
         try {
@@ -531,7 +537,6 @@ function ContentApp() {
       return originalOpen?.apply(window, arguments as any);
     };
     return () => {
-      // @ts-expect-error restore
       window.open = originalOpen;
     };
   }, [recordingOn]);
@@ -560,8 +565,21 @@ function ContentApp() {
       >
         <span style={{ color: "#f87171" }}>●</span>
         <span>Recording</span>
-        <div style={{ width: "1px", height: "16px", background: "rgba(255,255,255,0.2)" }} />
-        <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer" }}>
+        <div
+          style={{
+            width: "1px",
+            height: "16px",
+            background: "rgba(255,255,255,0.2)",
+          }}
+        />
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            cursor: "pointer",
+          }}
+        >
           <input
             type="checkbox"
             checked={autoCapture}
@@ -572,7 +590,9 @@ function ContentApp() {
         </label>
         <button
           onClick={() => {
-            browser.runtime.sendMessage({ type: "UNDO_LAST_STEP" }).catch(() => {});
+            browser.runtime
+              .sendMessage({ type: "UNDO_LAST_STEP" })
+              .catch(() => {});
           }}
           style={{
             padding: "6px 10px",

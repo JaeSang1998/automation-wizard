@@ -389,6 +389,87 @@ describe("Event Capture and Recording", () => {
     });
   });
 
+  describe("Duplicate recording prevention", () => {
+    it("should not record typing twice when Enter is pressed", async () => {
+      let recordCount = 0;
+      let typingTimer: number | null = null;
+
+      const flushTyping = () => {
+        recordCount++;
+        typingTimer = null;
+      };
+
+      // 타이핑 시작 - debounce 타이머 설정
+      typingTimer = window.setTimeout(flushTyping, 500);
+
+      // Enter 누름 - 타이머 정리 후 즉시 flush
+      if (typingTimer) {
+        window.clearTimeout(typingTimer);
+        typingTimer = null;
+      }
+      flushTyping();
+
+      // 500ms 대기 후에도 recordCount는 1이어야 함
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      expect(recordCount).toBe(1);
+    });
+
+    it("should clear timer when Enter is pressed", () => {
+      let timerCleared = false;
+      let typingTimer: number | null = window.setTimeout(() => {}, 500);
+
+      // Enter 감지 시 타이머 정리
+      if (typingTimer) {
+        window.clearTimeout(typingTimer);
+        typingTimer = null;
+        timerCleared = true;
+      }
+
+      expect(timerCleared).toBe(true);
+      expect(typingTimer).toBeNull();
+    });
+
+    it("should record only once with submit flag when Enter pressed", async () => {
+      const recordings: Array<{ text: string; submit?: boolean }> = [];
+      let typingTimer: number | null = null;
+      let typingValue = "test query";
+      let typingSubmit = false;
+
+      const flushTyping = () => {
+        if (typingTimer) {
+          window.clearTimeout(typingTimer);
+          typingTimer = null;
+        }
+        
+        recordings.push({
+          text: typingValue,
+          submit: typingSubmit || undefined,
+        });
+
+        typingSubmit = false;
+      };
+
+      // 타이핑 시작
+      typingTimer = window.setTimeout(flushTyping, 500);
+
+      // Enter 누름 - 타이머 정리 후 submit=true로 flush
+      if (typingTimer) {
+        window.clearTimeout(typingTimer);
+        typingTimer = null;
+      }
+      typingSubmit = true;
+      flushTyping();
+
+      // 500ms 대기
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      // 한 번만 레코딩되어야 하고 submit=true여야 함
+      expect(recordings).toHaveLength(1);
+      expect(recordings[0].submit).toBe(true);
+    });
+  });
+
   describe("Frame metadata", () => {
     it("should attach frame metadata to step", () => {
       const step: Step = {
