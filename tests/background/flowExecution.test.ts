@@ -149,7 +149,8 @@ describe("Flow Execution Engine", () => {
         createdAt: Date.now(),
       };
 
-      const firstStepUrl = flow.steps[0].url;
+      const firstStep = flow.steps[0];
+      const firstStepUrl = "url" in firstStep ? firstStep.url : undefined;
 
       expect(firstStepUrl).toBe("https://example.com/page1");
       expect(firstStepUrl?.startsWith("http")).toBe(true);
@@ -173,7 +174,8 @@ describe("Flow Execution Engine", () => {
       const executionOrder: string[] = [];
 
       flow.steps.forEach((step, index) => {
-        executionOrder.push(`Step ${index + 1}: ${step.selector}`);
+        const selector = "selector" in step ? step.selector : step.type;
+        executionOrder.push(`Step ${index + 1}: ${selector}`);
       });
 
       expect(executionOrder).toEqual([

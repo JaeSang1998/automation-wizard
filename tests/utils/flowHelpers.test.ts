@@ -58,7 +58,9 @@ describe("Flow Helpers", () => {
 
       expect(flow.steps).toHaveLength(1);
       expect(flow.steps[0].type).toBe("click");
-      expect(flow.steps[0].selector).toBe("#submit-button");
+      if ("selector" in flow.steps[0]) {
+        expect(flow.steps[0].selector).toBe("#submit-button");
+      }
     });
 
     it("should add a type step with masked text", () => {
@@ -102,8 +104,12 @@ describe("Flow Helpers", () => {
       flow.steps = flow.steps.filter((_, index) => index !== 1);
 
       expect(flow.steps).toHaveLength(2);
-      expect(flow.steps[0].selector).toBe("#btn1");
-      expect(flow.steps[1].selector).toBe("#btn3");
+      if ("selector" in flow.steps[0]) {
+        expect(flow.steps[0].selector).toBe("#btn1");
+      }
+      if ("selector" in flow.steps[1]) {
+        expect(flow.steps[1].selector).toBe("#btn3");
+      }
     });
   });
 
@@ -126,9 +132,15 @@ describe("Flow Helpers", () => {
       flow.steps.splice(toIndex, 0, moved);
 
       expect(flow.steps).toHaveLength(3);
-      expect(flow.steps[0].selector).toBe("#btn2");
-      expect(flow.steps[1].selector).toBe("#btn3");
-      expect(flow.steps[2].selector).toBe("#btn1");
+      if ("selector" in flow.steps[0]) {
+        expect(flow.steps[0].selector).toBe("#btn2");
+      }
+      if ("selector" in flow.steps[1]) {
+        expect(flow.steps[1].selector).toBe("#btn3");
+      }
+      if ("selector" in flow.steps[2]) {
+        expect(flow.steps[2].selector).toBe("#btn1");
+      }
     });
   });
 

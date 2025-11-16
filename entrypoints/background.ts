@@ -56,6 +56,7 @@ browser.runtime.onMessage.addListener((msg: Message, sender, sendResponse) => {
         console.warn("Failed to open side panel on start record:", e);
       }
 
+      // 모든 탭에 상태 전파
       const tabs = await browser.tabs.query({});
       await Promise.all(
         tabs
@@ -66,6 +67,16 @@ browser.runtime.onMessage.addListener((msg: Message, sender, sendResponse) => {
               .catch(() => {})
           )
       );
+
+      // Sidepanel에도 상태 브로드캐스트
+      try {
+        await browser.runtime.sendMessage({ 
+          type: "RECORD_STATE", 
+          recording: true 
+        });
+      } catch (e) {
+        // Sidepanel이 열려있지 않으면 에러 발생 - 무시
+      }
     })();
     return true;
   }
@@ -98,6 +109,7 @@ browser.runtime.onMessage.addListener((msg: Message, sender, sendResponse) => {
   if (msg.type === "STOP_RECORD") {
     isRecording = false;
     (async () => {
+      // 모든 탭에 상태 전파
       const tabs = await browser.tabs.query({});
       await Promise.all(
         tabs
@@ -108,6 +120,17 @@ browser.runtime.onMessage.addListener((msg: Message, sender, sendResponse) => {
               .catch(() => {})
           )
       );
+
+      // Sidepanel에도 상태 브로드캐스트
+      try {
+        await browser.runtime.sendMessage({ 
+          type: "RECORD_STATE", 
+          recording: false 
+        });
+      } catch (e) {
+        // Sidepanel이 열려있지 않으면 에러 발생 - 무시
+      }
+
       sendResponse({ success: true });
     })();
     return true;
@@ -893,6 +916,18 @@ async function runFlowInTab(tabId: number, flow: Flow): Promise<void> {
 
       throw error;
     }
+  }
+
+  // Flow 성공적으로 완료
+  console.log("All steps completed successfully");
+  try {
+    await browser.runtime.sendMessage({
+      type: "FLOW_COMPLETED",
+      totalSteps: steps.length,
+    });
+    console.log("Flow completion notification sent");
+  } catch (error) {
+    console.warn("Failed to send flow completion notification:", error);
   }
 }
 

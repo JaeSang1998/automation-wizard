@@ -28,9 +28,9 @@ const getSimpleSelector = (el: Element): string => {
 
     // nth-child
     let idx = 1;
-    let sib = node;
+    let sib: Element | null = node;
     while ((sib = sib.previousElementSibling as Element | null)) {
-      if (sib.tagName === node.tagName) idx++;
+      if (sib && sib.tagName === node.tagName) idx++;
     }
     part += `:nth-of-type(${idx})`;
 

@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { Step } from "../../types";
+import { makeSelector } from "../../lib/selectors/selectorGenerator";
 
 interface HoverToolbarProps {
   x: number;
@@ -16,6 +17,15 @@ interface HoverToolbarProps {
   ) => void;
 }
 
+/**
+ * 호버된 요소 위에 표시되는 툴바 컴포넌트
+ * 
+ * 기능:
+ * - Click, Type, Select, Extract 등의 액션 버튼 제공
+ * - 드래그 앤 드롭으로 이동 가능 (locked 상태일 때)
+ * - Element 스크린샷 캡처
+ * - 부모/자식 요소 탐색
+ */
 export default function HoverToolbar({
   x,
   y,
@@ -30,80 +40,93 @@ export default function HoverToolbar({
   if (!target) return null;
 
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ x, y });
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [userMoved, setUserMoved] = useState(false);
+  
+  // 초기 위치 계산 (즉시 실행)
+  const getInitialPosition = () => {
+    // localStorage에서 저장된 위치 확인
+    try {
+      const savedPosition = localStorage.getItem('automation-wizard-toolbar-position');
+      if (savedPosition) {
+        return JSON.parse(savedPosition);
+      }
+    } catch (e) {
+      // 파싱 실패 시 무시
+    }
 
-  // 초기 위치를 화면 안으로 조정
+    // 기본 위치: 우측 하단
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const estimatedWidth = 250;
+    const estimatedHeight = 100;
+    
+    return {
+      x: Math.max(20, viewportWidth - estimatedWidth - 20),
+      y: Math.max(20, viewportHeight - estimatedHeight - 20),
+    };
+  };
+
+  const [position, setPosition] = useState<{ x: number; y: number }>(getInitialPosition);
+
+  // 실제 렌더링 후 위치 미세 조정
   useEffect(() => {
-    if (!toolbarRef.current) return;
+    if (!toolbarRef.current || userMoved) return;
 
     const toolbar = toolbarRef.current;
     const rect = toolbar.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    let adjustedX = x + 12;
-    let adjustedY = y + 12;
+    // 실제 크기에 맞춰 위치 재조정
+    const adjustedX = viewportWidth - rect.width - 20;
+    const adjustedY = viewportHeight - rect.height - 20;
 
-    // 오른쪽 경계 체크
-    if (adjustedX + rect.width > viewportWidth) {
-      adjustedX = viewportWidth - rect.width - 12;
+    // 위치가 많이 다르면 업데이트
+    if (Math.abs(position.x - adjustedX) > 50 || Math.abs(position.y - adjustedY) > 50) {
+      setPosition({ x: Math.max(20, adjustedX), y: Math.max(20, adjustedY) });
     }
-
-    // 왼쪽 경계 체크
-    if (adjustedX < 12) {
-      adjustedX = 12;
-    }
-
-    // 아래쪽 경계 체크
-    if (adjustedY + rect.height > viewportHeight) {
-      adjustedY = viewportHeight - rect.height - 12;
-    }
-
-    // 위쪽 경계 체크
-    if (adjustedY < 12) {
-      adjustedY = 12;
-    }
-
-    setPosition({ x: adjustedX, y: adjustedY });
-  }, [x, y, locked]);
+  }, [toolbarRef.current, locked]);
 
   // 드래그 핸들러
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!locked) return;
-
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
     setIsDragging(true);
     setDragOffset({
       x: e.clientX - position.x,
       y: e.clientY - position.y,
     });
-  };
+  }, [position]);
 
   useEffect(() => {
     if (!isDragging) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const newX = e.clientX - dragOffset.x;
-      const newY = e.clientY - dragOffset.y;
-
-      // 화면 경계 체크
       if (!toolbarRef.current) return;
+
       const rect = toolbarRef.current.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
 
+      const newX = e.clientX - dragOffset.x;
+      const newY = e.clientY - dragOffset.y;
+
       const clampedX = Math.max(0, Math.min(newX, viewportWidth - rect.width));
-      const clampedY = Math.max(
-        0,
-        Math.min(newY, viewportHeight - rect.height)
-      );
+      const clampedY = Math.max(0, Math.min(newY, viewportHeight - rect.height));
 
       setPosition({ x: clampedX, y: clampedY });
     };
 
     const handleMouseUp = () => {
       setIsDragging(false);
+      setUserMoved(true);
+      
+      // 드래그가 끝나면 위치를 localStorage에 저장
+      if (toolbarRef.current) {
+        const rect = toolbarRef.current.getBoundingClientRect();
+        const savedPos = { x: rect.left, y: rect.top };
+        localStorage.setItem('automation-wizard-toolbar-position', JSON.stringify(savedPos));
+      }
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -113,10 +136,10 @@ export default function HoverToolbar({
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging, dragOffset]);
+  }, [isDragging, dragOffset, setUserMoved]);
 
-  // 요소 정보 추출
-  const getElementInfo = (el: HTMLElement) => {
+  // Element 정보 추출
+  const getElementInfo = useCallback((el: HTMLElement) => {
     const tagName = el.tagName.toLowerCase();
     const id = el.id ? `#${el.id}` : "";
     const classes = el.className
@@ -125,611 +148,535 @@ export default function HoverToolbar({
     const text =
       el.innerText?.substring(0, 30) || el.textContent?.substring(0, 30) || "";
     return { tagName, id, classes, text };
-  };
+  }, []);
 
   const elementInfo = getElementInfo(target);
-  const hasParent =
-    target.parentElement !== null && target.parentElement !== document.body;
+  const hasParent = target.parentElement !== null && target.parentElement !== document.body;
   const hasChild = target.children.length > 0;
-
-  const makeSelector = (el: HTMLElement): string => {
-    const segs: string[] = [];
-    let cur: HTMLElement | null = el;
-
-    for (let depth = 0; cur && depth < 5; depth++) {
-      let s = cur.nodeName.toLowerCase();
-      const id = cur.id;
-
-      if (id) {
-        segs.unshift(`${s}#${CSS.escape(id)}`);
-        break;
-      }
-
-      const testid = cur.getAttribute("data-testid");
-      const aria = cur.getAttribute("aria-label");
-
-      if (testid) {
-        s += `[data-testid="${testid}"]`;
-      } else if (aria) {
-        s += `[aria-label="${aria}"]`;
-      } else {
-        const parent = cur.parentElement;
-        if (parent && cur) {
-          const currentNode = cur; // TypeScript를 위한 변수 저장
-          const same = Array.from(parent.children).filter(
-            (c) => c.nodeName === currentNode.nodeName
-          );
-          if (same.length > 1) {
-            s += `:nth-of-type(${same.indexOf(currentNode) + 1})`;
-          }
-        }
-      }
-
-      segs.unshift(s);
-      cur = cur.parentElement;
-    }
-
-    return segs.join(">");
-  };
-
   const selector = makeSelector(target);
 
-  const captureElementScreenshot = async (
-    element: HTMLElement,
-    selector: string
-  ) => {
-    try {
-      const rect = element.getBoundingClientRect();
+  /**
+   * Element 스크린샷 캡처
+   */
+  const captureElementScreenshot = useCallback(
+    async (element: HTMLElement, selector: string) => {
+      try {
+        const rect = element.getBoundingClientRect();
 
-      if (rect.width === 0 || rect.height === 0) {
-        console.log("Element has no visible size, skipping screenshot");
+        if (rect.width === 0 || rect.height === 0) {
+          console.log("Element has no visible size, skipping screenshot");
+          return null;
+        }
+
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return null;
+
+        // 캔버스 크기 설정
+        canvas.width = Math.max(rect.width, 200);
+        canvas.height = Math.max(rect.height, 100);
+
+        // 배경 그리기
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 엘리먼트의 실제 스타일 정보 가져오기
+        const computedStyle = window.getComputedStyle(element);
+        const backgroundColor = computedStyle.backgroundColor;
+        const borderColor = computedStyle.borderColor;
+        const borderWidth = computedStyle.borderWidth;
+        const color = computedStyle.color;
+        const fontSize = computedStyle.fontSize;
+        const fontFamily = computedStyle.fontFamily;
+
+        // 배경색 적용
+        if (
+          backgroundColor &&
+          backgroundColor !== "rgba(0, 0, 0, 0)" &&
+          backgroundColor !== "transparent"
+        ) {
+          ctx.fillStyle = backgroundColor;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // 테두리 그리기
+        if (borderWidth && borderWidth !== "0px") {
+          ctx.strokeStyle = borderColor;
+          ctx.lineWidth = parseInt(borderWidth) || 1;
+          ctx.strokeRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // 텍스트 내용 그리기
+        const text = element.innerText || element.textContent || "";
+        if (text) {
+          ctx.fillStyle = color || "#000000";
+          ctx.font = `${fontSize || "14px"} ${fontFamily || "system-ui"}`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+
+          // 텍스트가 캔버스보다 크면 줄바꿈
+          const maxWidth = canvas.width - 20;
+          const words = text.split(" ");
+          let line = "";
+          let y = canvas.height / 2;
+
+          for (let n = 0; n < words.length; n++) {
+            const testLine = line + words[n] + " ";
+            const metrics = ctx.measureText(testLine);
+            const testWidth = metrics.width;
+
+            if (testWidth > maxWidth && n > 0) {
+              ctx.fillText(line, canvas.width / 2, y);
+              line = words[n] + " ";
+              y += parseInt(fontSize) || 14;
+            } else {
+              line = testLine;
+            }
+          }
+          ctx.fillText(line, canvas.width / 2, y);
+        }
+
+        // 엘리먼트 타입 표시
+        ctx.fillStyle = "#666666";
+        ctx.font = "10px monospace";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "bottom";
+        ctx.fillText(element.tagName.toLowerCase(), 5, canvas.height - 5);
+
+        return canvas.toDataURL("image/png");
+      } catch (error) {
+        console.warn("Failed to capture screenshot:", error);
         return null;
       }
+    },
+    []
+  );
 
-      // 실제 엘리먼트를 복사해서 캔버스에 그리기
-      const canvas = document.createElement("canvas");
-      const ctx = canvas.getContext("2d");
-
-      // 캔버스 크기 설정
-      canvas.width = Math.max(rect.width, 200);
-      canvas.height = Math.max(rect.height, 100);
-
-      // 배경 그리기
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // 엘리먼트의 실제 스타일 정보 가져오기
-      const computedStyle = window.getComputedStyle(element);
-      const backgroundColor = computedStyle.backgroundColor;
-      const borderColor = computedStyle.borderColor;
-      const borderWidth = computedStyle.borderWidth;
-      const color = computedStyle.color;
-      const fontSize = computedStyle.fontSize;
-      const fontFamily = computedStyle.fontFamily;
-
-      // 배경색 적용
-      if (
-        backgroundColor &&
-        backgroundColor !== "rgba(0, 0, 0, 0)" &&
-        backgroundColor !== "transparent"
-      ) {
-        ctx.fillStyle = backgroundColor;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-      }
-
-      // 테두리 그리기
-      if (borderWidth && borderWidth !== "0px") {
-        ctx.strokeStyle = borderColor;
-        ctx.lineWidth = parseInt(borderWidth) || 1;
-        ctx.strokeRect(0, 0, canvas.width, canvas.height);
-      }
-
-      // 텍스트 내용 그리기
-      const text = element.innerText || element.textContent || "";
-      if (text) {
-        ctx.fillStyle = color || "#000000";
-        ctx.font = `${fontSize || "14px"} ${fontFamily || "system-ui"}`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-
-        // 텍스트가 캔버스보다 크면 줄바꿈
-        const maxWidth = canvas.width - 20;
-        const words = text.split(" ");
-        let line = "";
-        let y = canvas.height / 2;
-
-        for (let n = 0; n < words.length; n++) {
-          const testLine = line + words[n] + " ";
-          const metrics = ctx.measureText(testLine);
-          const testWidth = metrics.width;
-
-          if (testWidth > maxWidth && n > 0) {
-            ctx.fillText(line, canvas.width / 2, y);
-            line = words[n] + " ";
-            y += parseInt(fontSize) || 14;
-          } else {
-            line = testLine;
-          }
-        }
-        ctx.fillText(line, canvas.width / 2, y);
-      }
-
-      // 엘리먼트 타입 표시 (작은 글씨로)
-      ctx.fillStyle = "#666666";
-      ctx.font = "10px monospace";
-      ctx.textAlign = "left";
-      ctx.textBaseline = "bottom";
-      ctx.fillText(element.tagName.toLowerCase(), 5, canvas.height - 5);
-
-      return canvas.toDataURL("image/png");
-    } catch (error) {
-      console.warn("Failed to capture screenshot:", error);
-      return null;
-    }
-  };
-
-  const handleClick = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const screenshot = await captureElementScreenshot(target, selector);
-    onRecord({
-      type: "click",
-      selector,
-      url: window.location.href,
-      screenshot,
-    });
-  };
-
-  const handleType = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!onShowTextInput) {
-      // Fallback to prompt if custom modal is not available
-      const maskedText = prompt(
-        "입력할 텍스트를 입력하세요 (보안상 마스킹됩니다):"
-      );
-      if (maskedText !== null) {
-        const maskedDisplayText = "*".repeat(maskedText.length);
-        const screenshot = await captureElementScreenshot(target, selector);
-        onRecord({
-          type: "type",
-          selector,
-          text: maskedDisplayText,
-          originalText: maskedText,
-          url: window.location.href,
-          screenshot,
-        });
-      }
-      return;
-    }
-
-    // 커스텀 마스킹 입력창 사용
-    onShowTextInput(async (inputText) => {
-      if (inputText !== null) {
-        const maskedDisplayText = "*".repeat(inputText.length);
-        const screenshot = await captureElementScreenshot(target, selector);
-        onRecord({
-          type: "type",
-          selector,
-          text: maskedDisplayText,
-          originalText: inputText,
-          url: window.location.href,
-          screenshot,
-        });
-      }
-    });
-  };
-
-  const handleExtract = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const screenshot = await captureElementScreenshot(target, selector);
-    onRecord({
-      type: "extract",
-      selector,
-      prop: "innerText",
-      url: window.location.href,
-      screenshot,
-    });
-  };
-
-  const handleScreenshot = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const screenshot = await captureElementScreenshot(target, selector);
-    if (screenshot) {
+  /**
+   * 액션 핸들러들
+   */
+  const handleClick = useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const screenshot = await captureElementScreenshot(target, selector);
       onRecord({
-        type: "screenshot",
+        type: "click",
         selector,
         url: window.location.href,
-        screenshot,
-      } as any);
-    }
-  };
+        screenshot: screenshot || undefined,
+      });
+    },
+    [target, selector, captureElementScreenshot, onRecord]
+  );
 
-  const handleSelect = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleScreenshot = useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const screenshot = await captureElementScreenshot(target, selector);
+      
+      if (screenshot) {
+        // 스크린샷을 다운로드
+        const link = document.createElement('a');
+        link.href = screenshot;
+        link.download = `element-screenshot-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // 스크린샷 촬영 피드백
+        alert('📸 Screenshot saved!');
+      }
+    },
+    [target, selector, captureElementScreenshot]
+  );
 
-    // select 요소인지 확인
-    if (target.tagName.toLowerCase() !== "select") {
-      alert("이 요소는 select 요소가 아닙니다.");
-      return;
-    }
+  const handleType = useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
 
-    if (!onShowSelectOption) {
-      // Fallback to prompt if custom modal is not available
-      const selectElement = target as HTMLSelectElement;
-      const options = Array.from(selectElement.options).map((opt, idx) => ({
+      const onTextInput = (text: string | null) => {
+        if (text !== null) {
+          const maskedDisplayText = "*".repeat(text.length);
+          captureElementScreenshot(target, selector).then((screenshot) => {
+            onRecord({
+              type: "type",
+              selector,
+              text: maskedDisplayText,
+              originalText: text,
+              url: window.location.href,
+              screenshot: screenshot || undefined,
+            });
+          });
+        }
+      };
+
+      if (onShowTextInput) {
+        onShowTextInput(onTextInput);
+      } else {
+        // Fallback to prompt
+        const text = prompt("입력할 텍스트를 입력하세요 (보안상 마스킹됩니다):");
+        onTextInput(text);
+      }
+    },
+    [target, selector, captureElementScreenshot, onRecord, onShowTextInput]
+  );
+
+  const handleSelect = useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!(target instanceof HTMLSelectElement)) {
+        alert("This element is not a select element!");
+        return;
+      }
+
+      const options = Array.from(target.options).map((opt, idx) => ({
         index: idx,
         value: opt.value,
         text: opt.text,
       }));
 
-      const optionsText = options
-        .map((opt) => `${opt.index}: ${opt.text} (value: ${opt.value})`)
-        .join("\n");
-      const selectedIndex = prompt(
-        `다음 옵션 중 하나를 선택하세요 (번호 입력):\n\n${optionsText}`
-      );
-
-      if (selectedIndex !== null && selectedIndex !== "") {
-        const idx = parseInt(selectedIndex, 10);
-        if (!isNaN(idx) && idx >= 0 && idx < options.length) {
-          const selectedOption = options[idx];
-          const screenshot = await captureElementScreenshot(target, selector);
-          onRecord({
-            type: "select",
-            selector,
-            value: selectedOption.value,
-            url: window.location.href,
-            screenshot,
+      const onSelectOption = (selectedValue: string | null) => {
+        if (selectedValue !== null) {
+          captureElementScreenshot(target, selector).then((screenshot) => {
+            onRecord({
+              type: "select",
+              selector,
+              value: selectedValue,
+              url: window.location.href,
+              screenshot: screenshot || undefined,
+            });
           });
-        } else {
-          alert("잘못된 번호입니다.");
+        }
+      };
+
+      if (onShowSelectOption) {
+        onShowSelectOption(options, onSelectOption);
+      } else {
+        // Fallback to prompt
+        const selectedValue = prompt(
+          `옵션을 선택하세요:\n${options
+            .map((o) => `${o.index}: ${o.text}`)
+            .join("\n")}\n\n선택한 옵션의 인덱스를 입력하세요:`
+        );
+        if (selectedValue !== null) {
+          const idx = parseInt(selectedValue);
+          if (!isNaN(idx) && options[idx]) {
+            onSelectOption(options[idx].value);
+          }
         }
       }
-      return;
-    }
+    },
+    [target, selector, captureElementScreenshot, onRecord, onShowSelectOption]
+  );
 
-    const selectElement = target as HTMLSelectElement;
-    const options = Array.from(selectElement.options).map((opt, idx) => ({
-      index: idx,
-      value: opt.value,
-      text: opt.text,
-    }));
+  const handleExtract = useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const screenshot = await captureElementScreenshot(target, selector);
+      onRecord({
+        type: "extract",
+        selector,
+        url: window.location.href,
+        screenshot: screenshot || undefined,
+      });
+    },
+    [target, selector, captureElementScreenshot, onRecord]
+  );
 
-    // 커스텀 옵션 선택 모달 사용
-    onShowSelectOption(options, async (selectedValue) => {
-      if (selectedValue !== null) {
-        const screenshot = await captureElementScreenshot(target, selector);
+  const handleNavigate = useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const url = window.location.href;
+      onRecord({
+        type: "navigate",
+        url,
+      });
+    },
+    [onRecord]
+  );
+
+  const handleWaitFor = useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const timeoutStr = prompt("Wait timeout (ms, default: 5000):");
+      const timeoutMs = timeoutStr ? parseInt(timeoutStr) : 5000;
+      
+      if (!isNaN(timeoutMs)) {
         onRecord({
-          type: "select",
+          type: "waitFor",
           selector,
-          value: selectedValue,
+          timeoutMs,
           url: window.location.href,
-          screenshot,
         });
       }
-    });
-  };
-
-  const handleWaitFor = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const screenshot = await captureElementScreenshot(target, selector);
-    onRecord({
-      type: "waitFor",
-      selector,
-      timeoutMs: 5000,
-      url: window.location.href,
-      screenshot,
-    });
-  };
+    },
+    [selector, onRecord]
+  );
 
   return (
     <div
       ref={toolbarRef}
-      className="wxt-toolbar"
+      onMouseDown={handleMouseDown}
       style={{
         position: "fixed",
-        left: `${position.x}px`,
-        top: `${position.y}px`,
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-        padding: "12px",
-        background: "white",
-        border: "2px solid #f59e0b",
+        left: position.x,
+        top: position.y,
+        background: locked ? "#1f2937" : "#2d3748",
+        color: "#f7fafc",
+        padding: locked ? "12px" : "8px",
         borderRadius: "8px",
-        boxShadow: isDragging
-          ? "0 12px 32px rgba(245, 158, 11, 0.5)"
-          : "0 8px 24px rgba(245, 158, 11, 0.3)",
+        boxShadow: locked
+          ? "0 4px 16px rgba(245, 158, 11, 0.3)"
+          : "0 2px 8px rgba(0, 0, 0, 0.2)",
         zIndex: 2147483647,
         fontFamily: "system-ui, -apple-system, sans-serif",
-        fontSize: "12px",
+        fontSize: "13px",
         pointerEvents: "auto",
-        cursor: isDragging ? "grabbing" : "default",
-        animation: "slideIn 0.2s ease-out",
-        maxWidth: "500px",
-        minWidth: "400px",
+        cursor: isDragging ? "grabbing" : "grab",
         userSelect: "none",
-        transition: isDragging ? "none" : "box-shadow 0.2s",
+        transition: isDragging ? "none" : "all 0.2s ease",
+        border: locked ? "2px solid #f59e0b" : "1px solid #4a5568",
+        minWidth: locked ? "300px" : "auto",
+        maxWidth: locked ? "450px" : "auto",
       }}
     >
-      {locked && (
-        <>
-          {/* 드래그 핸들 */}
-          <div
-            onMouseDown={handleMouseDown}
-            style={{
-              position: "absolute",
-              top: "4px",
-              left: "50%",
-              transform: "translateX(-50%)",
-              width: "40px",
-              height: "4px",
-              background: isDragging ? "#f59e0b" : "#d1d5db",
-              borderRadius: "2px",
-              cursor: "grab",
-              transition: "background 0.2s",
-            }}
-            title="Drag to move"
-          />
-
-          {/* 요소 인스펙터 */}
+      {/* Element Info (항상 표시, locked일 때 더 상세) */}
+      {locked ? (
+        <div
+          style={{
+            marginBottom: "12px",
+            paddingBottom: "12px",
+            borderBottom: "1px solid #374151",
+          }}
+        >
           <div
             style={{
+              fontWeight: "600",
+              marginBottom: "6px",
+              color: "#f59e0b",
               fontSize: "11px",
-              background: "#fef3c7",
-              padding: "8px",
-              borderRadius: "4px",
-              border: "1px solid #fde68a",
-              marginBottom: "4px",
             }}
           >
+            🔍 SELECTED ELEMENT
+          </div>
+          <div style={{ fontSize: "11px", color: "#d1d5db", lineHeight: "1.6" }}>
+            <div style={{ marginBottom: "4px" }}>
+              <strong style={{ color: "#f3f4f6" }}>{elementInfo.tagName}</strong>
+              {elementInfo.id && (
+                <span style={{ color: "#60a5fa", marginLeft: "4px" }}>
+                  {elementInfo.id}
+                </span>
+              )}
+              {elementInfo.classes && (
+                <span style={{ color: "#34d399", marginLeft: "4px" }}>
+                  {elementInfo.classes}
+                </span>
+              )}
+            </div>
+            {elementInfo.text && (
+              <div
+                style={{
+                  fontStyle: "italic",
+                  color: "#9ca3af",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  marginBottom: "8px",
+                }}
+              >
+                "{elementInfo.text}"
+              </div>
+            )}
+            
+            {/* Full Selector */}
             <div
               style={{
-                fontWeight: "600",
-                color: "#92400e",
-                marginBottom: "4px",
+                marginTop: "8px",
+                padding: "8px",
+                background: "#374151",
+                borderRadius: "4px",
+                fontSize: "10px",
+                fontFamily: "monospace",
+                color: "#d1d5db",
+                wordBreak: "break-all",
+                lineHeight: "1.4",
               }}
             >
-              🔍 Selected Element
+              {selector}
             </div>
+
+            {/* 키보드 단축키 안내 */}
             <div
-              style={{ color: "#78350f", fontSize: "10px", lineHeight: "1.4" }}
+              style={{
+                marginTop: "8px",
+                fontSize: "10px",
+                color: "#6b7280",
+                textAlign: "center",
+              }}
             >
-              <div>
-                <strong>{elementInfo.tagName}</strong>
-                {elementInfo.id && (
-                  <span style={{ color: "#3b82f6" }}>{elementInfo.id}</span>
-                )}
-                {elementInfo.classes && (
-                  <span style={{ color: "#10b981" }}>
-                    {elementInfo.classes}
-                  </span>
-                )}
-              </div>
-              {elementInfo.text && (
-                <div
-                  style={{
-                    marginTop: "4px",
-                    fontStyle: "italic",
-                    wordBreak: "break-word",
-                    whiteSpace: "normal",
-                    lineHeight: "1.3",
-                  }}
-                >
-                  "{elementInfo.text}"
-                </div>
-              )}
+              ⬆️ ArrowUp | ⬇️ ArrowDown | ESC: Unlock
             </div>
           </div>
 
           {/* 요소 탐색 버튼 */}
-          <div style={{ display: "flex", gap: "4px", marginBottom: "4px" }}>
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onNavigateParent?.();
-              }}
-              disabled={!hasParent}
-              style={{
-                flex: 1,
-                padding: "6px 8px",
-                background: hasParent ? "#6366f1" : "#d1d5db",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: hasParent ? "pointer" : "not-allowed",
-                fontSize: "11px",
-                fontWeight: "500",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "4px",
-              }}
-            >
-              ⬆️ Parent
-            </button>
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onNavigateChild?.();
-              }}
-              disabled={!hasChild}
-              style={{
-                flex: 1,
-                padding: "6px 8px",
-                background: hasChild ? "#8b5cf6" : "#d1d5db",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: hasChild ? "pointer" : "not-allowed",
-                fontSize: "11px",
-                fontWeight: "500",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "4px",
-              }}
-            >
-              ⬇️ Child
-            </button>
+          {(onNavigateParent || onNavigateChild) && (
+            <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+              {onNavigateParent && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onNavigateParent();
+                  }}
+                  disabled={!hasParent}
+                  style={{
+                    flex: 1,
+                    padding: "6px 10px",
+                    background: hasParent ? "#6366f1" : "#d1d5db",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: hasParent ? "pointer" : "not-allowed",
+                    fontSize: "11px",
+                    fontWeight: "500",
+                    transition: "background 0.2s",
+                  }}
+                >
+                  ⬆️ Parent
+                </button>
+              )}
+              {onNavigateChild && (
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onNavigateChild();
+                  }}
+                  disabled={!hasChild}
+                  style={{
+                    flex: 1,
+                    padding: "6px 10px",
+                    background: hasChild ? "#8b5cf6" : "#d1d5db",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "6px",
+                    cursor: hasChild ? "pointer" : "not-allowed",
+                    fontSize: "11px",
+                    fontWeight: "500",
+                    transition: "background 0.2s",
+                  }}
+                >
+                  ⬇️ Child
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div
+          style={{
+            marginBottom: "8px",
+            fontSize: "11px",
+            color: "#cbd5e0",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <strong>{elementInfo.tagName}</strong>
+          {elementInfo.id}
+          {elementInfo.classes}
           </div>
+        )}
 
-          <div
-            style={{
-              fontSize: "11px",
-              color: "#f59e0b",
-              fontWeight: "600",
-              textAlign: "center",
-              paddingBottom: "4px",
-              borderBottom: "1px solid #fef3c7",
-            }}
-          >
-            📍 Select an action
-          </div>
-        </>
-      )}
-      <div style={{ display: "flex", gap: "6px" }}>
-        <button
-          onClick={handleClick}
-          style={{
-            padding: "6px 12px",
-            border: "none",
-            borderRadius: "4px",
-            background: "#3b82f6",
-            color: "white",
-            cursor: "pointer",
-            fontSize: "12px",
-            fontWeight: "500",
-            transition: "all 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "#2563eb";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "#3b82f6";
-          }}
-        >
-          👆 Click
-        </button>
-        <button
-          onClick={handleScreenshot}
-          style={{
-            padding: "6px 12px",
-            border: "none",
-            borderRadius: "4px",
-            background: "#0ea5e9",
-            color: "white",
-            cursor: "pointer",
-            fontSize: "12px",
-            fontWeight: "500",
-            transition: "all 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "#0284c7";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "#0ea5e9";
-          }}
-        >
-          📸 Shot
-        </button>
-        <button
-          onClick={handleType}
-          style={{
-            padding: "6px 12px",
-            border: "none",
-            borderRadius: "4px",
-            background: "#10b981",
-            color: "white",
-            cursor: "pointer",
-            fontSize: "12px",
-            fontWeight: "500",
-            transition: "all 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "#059669";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "#10b981";
-          }}
-        >
+      {/* Action Buttons */}
+      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+        <ActionButton onClick={handleClick} locked={locked}>
+          🖱️ Click
+        </ActionButton>
+        <ActionButton onClick={handleScreenshot} locked={locked}>
+          📸 Screenshot
+        </ActionButton>
+        <ActionButton onClick={handleType} locked={locked}>
           ⌨️ Type
-        </button>
-        <button
-          onClick={handleSelect}
-          style={{
-            padding: "6px 12px",
-            border: "none",
-            borderRadius: "4px",
-            background: "#ec4899",
-            color: "white",
-            cursor: "pointer",
-            fontSize: "12px",
-            fontWeight: "500",
-            transition: "all 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "#db2777";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "#ec4899";
-          }}
-        >
-          🔽 Select
-        </button>
-        <button
-          onClick={handleExtract}
-          style={{
-            padding: "6px 12px",
-            border: "none",
-            borderRadius: "4px",
-            background: "#f59e0b",
-            color: "white",
-            cursor: "pointer",
-            fontSize: "12px",
-            fontWeight: "500",
-            transition: "all 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "#d97706";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "#f59e0b";
-          }}
-        >
-          📄 Extract
-        </button>
-        <button
-          onClick={handleWaitFor}
-          style={{
-            padding: "6px 12px",
-            border: "none",
-            borderRadius: "4px",
-            background: "#8b5cf6",
-            color: "white",
-            cursor: "pointer",
-            fontSize: "12px",
-            fontWeight: "500",
-            transition: "all 0.2s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "#7c3aed";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "#8b5cf6";
-          }}
-        >
+        </ActionButton>
+        {target instanceof HTMLSelectElement && (
+          <ActionButton onClick={handleSelect} locked={locked}>
+            📋 Select
+          </ActionButton>
+        )}
+        <ActionButton onClick={handleExtract} locked={locked}>
+          📤 Extract
+        </ActionButton>
+        <ActionButton onClick={handleNavigate} locked={locked}>
+          🔗 Navigate
+        </ActionButton>
+        <ActionButton onClick={handleWaitFor} locked={locked}>
           ⏱️ Wait
-        </button>
+        </ActionButton>
       </div>
     </div>
   );
 }
+
+/**
+ * 액션 버튼 컴포넌트
+ */
+function ActionButton({
+  onClick,
+  locked,
+  disabled = false,
+  children,
+}: {
+  onClick: (e: React.MouseEvent) => void;
+  locked: boolean;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  const [hover, setHover] = useState(false);
+
+  const getButtonColor = () => {
+    const childText = typeof children === 'string' ? children : '';
+    if (childText.includes('Click')) return hover ? '#2563eb' : '#3b82f6';
+    if (childText.includes('Screenshot')) return hover ? '#c026d3' : '#d946ef';
+    if (childText.includes('Type')) return hover ? '#059669' : '#10b981';
+    if (childText.includes('Select')) return hover ? '#db2777' : '#ec4899';
+    if (childText.includes('Extract')) return hover ? '#d97706' : '#f59e0b';
+    if (childText.includes('Navigate')) return hover ? '#0284c7' : '#0ea5e9';
+    if (childText.includes('Wait')) return hover ? '#7c3aed' : '#8b5cf6';
+    return hover ? '#2563eb' : '#3b82f6';
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        padding: "6px 12px",
+        background: disabled ? "#d1d5db" : getButtonColor(),
+        color: "white",
+        border: "none",
+        borderRadius: "6px",
+        cursor: disabled ? "not-allowed" : "pointer",
+        fontSize: "12px",
+        fontWeight: "500",
+        transition: "all 0.2s",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+

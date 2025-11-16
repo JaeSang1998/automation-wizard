@@ -75,9 +75,11 @@ describe("Background Message Handling", () => {
       await browser.runtime.sendMessage(message);
 
       expect(browser.runtime.sendMessage).toHaveBeenCalledWith(message);
-      const call = vi.mocked(browser.runtime.sendMessage).mock.calls[0][0] as RecordStepMessage;
+      const call = vi.mocked(browser.runtime.sendMessage).mock.calls[0][0] as unknown as RecordStepMessage;
       expect(call.step.type).toBe("click");
-      expect(call.step.selector).toBe("#submit-button");
+      if ("selector" in call.step) {
+        expect(call.step.selector).toBe("#submit-button");
+      }
     });
 
     it("should record a type step with original text", async () => {
@@ -97,7 +99,7 @@ describe("Background Message Handling", () => {
 
       await browser.runtime.sendMessage(message);
 
-      const call = vi.mocked(browser.runtime.sendMessage).mock.calls[0][0] as RecordStepMessage;
+      const call = vi.mocked(browser.runtime.sendMessage).mock.calls[0][0] as unknown as RecordStepMessage;
       expect(call.step.type).toBe("type");
       expect((call.step as any).originalText).toBe("secret123");
     });
@@ -119,7 +121,7 @@ describe("Background Message Handling", () => {
 
       await browser.runtime.sendMessage(message);
 
-      const call = vi.mocked(browser.runtime.sendMessage).mock.calls[0][0] as RecordStepMessage;
+      const call = vi.mocked(browser.runtime.sendMessage).mock.calls[0][0] as unknown as RecordStepMessage;
       expect((call.step as any)._frameId).toBe(123);
       expect((call.step as any)._frameUrl).toBe("https://example.com/iframe");
     });

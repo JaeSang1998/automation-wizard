@@ -75,7 +75,7 @@ if (!global.crypto) {
           const v = c === "x" ? r : (r & 0x3) | 0x8;
           return v.toString(16);
         }
-      );
+      ) as `${string}-${string}-${string}-${string}-${string}`;
     },
   };
 }
