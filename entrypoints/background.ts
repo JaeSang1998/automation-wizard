@@ -32,15 +32,104 @@ async function saveFlow(flow: Flow): Promise<void> {
   await browser.storage.local.set({ flow });
 }
 
+let isRecording = false;
+let shouldStopRunning = false;
+
 // 메시지 핸들러
-browser.runtime.onMessage.addListener((msg: Message, sender) => {
+browser.runtime.onMessage.addListener((msg: Message, sender, sendResponse) => {
   console.log("Background received message:", msg);
+
+  // 레코딩 상태 토글
+  if (msg.type === "START_RECORD") {
+    isRecording = true;
+    (async () => {
+      // 사이드패널 열기 (현재 탭)
+      try {
+        const [tab] = await browser.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        if (tab?.id) {
+          await browser.sidePanel.open({ tabId: tab.id });
+        }
+      } catch (e) {
+        console.warn("Failed to open side panel on start record:", e);
+      }
+
+      const tabs = await browser.tabs.query({});
+      await Promise.all(
+        tabs
+          .filter((t) => t.id)
+          .map((t) =>
+            browser.tabs
+              .sendMessage(t.id!, { type: "RECORD_STATE", recording: true })
+              .catch(() => {})
+          )
+      );
+    })();
+    return true;
+  }
+
+  // 현재 레코딩 상태 질의
+  if (msg.type === "GET_RECORD_STATE") {
+    try {
+      sendResponse({ type: "RECORD_STATE", recording: isRecording });
+    } catch (e) {
+      console.warn("Failed to send record state:", e);
+    }
+    return true;
+  }
+
+  // 마지막 스텝 되돌리기
+  if (msg.type === "UNDO_LAST_STEP") {
+    (async () => {
+      const flow = await getFlow();
+      if (flow.steps.length > 0) {
+        flow.steps.pop();
+        await saveFlow(flow);
+        browser.runtime
+          .sendMessage({ type: "FLOW_UPDATED", flow })
+          .catch(() => {});
+      }
+    })();
+    return true;
+  }
+
+  if (msg.type === "STOP_RECORD") {
+    isRecording = false;
+    (async () => {
+      const tabs = await browser.tabs.query({});
+      await Promise.all(
+        tabs
+          .filter((t) => t.id)
+          .map((t) =>
+            browser.tabs
+              .sendMessage(t.id!, { type: "RECORD_STATE", recording: false })
+              .catch(() => {})
+          )
+      );
+      sendResponse({ success: true });
+    })();
+    return true;
+  }
 
   // 스텝 레코드
   if (msg.type === "REC_STEP") {
     (async () => {
       const flow = await getFlow();
-      flow.steps.push((msg as RecordStepMessage).step);
+      const incoming = (msg as RecordStepMessage).step as Step;
+      // 프레임 메타데이터 부착
+      try {
+        const frameId = (sender as any)?.frameId as number | undefined;
+        if (frameId !== undefined) {
+          (incoming as any)._frameId = frameId;
+        }
+        const senderUrl = (sender as any)?.url as string | undefined;
+        if (senderUrl) {
+          (incoming as any)._frameUrl = senderUrl;
+        }
+      } catch {}
+      flow.steps.push(incoming);
       await saveFlow(flow);
 
       // 사이드패널 업데이트 알림
@@ -58,124 +147,84 @@ browser.runtime.onMessage.addListener((msg: Message, sender) => {
     return true;
   }
 
+  // 플로우 실행 중단
+  if (msg.type === "STOP_RUN") {
+    console.log("STOP_RUN requested");
+    shouldStopRunning = true;
+    sendResponse({ success: true });
+    return true;
+  }
+
   // 플로우 실행
   if (msg.type === "RUN_FLOW") {
+    shouldStopRunning = false; // 실행 시작 시 플래그 리셋
     (async () => {
       const flow = await getFlow();
 
-      // 새 탭을 열어서 startUrl로 이동 (설정되어 있는 경우)
+      // 녹화 중단 및 상태 브로드캐스트
+      try {
+        // @ts-ignore
+        isRecording = false;
+        const tabs = await browser.tabs.query({});
+        await Promise.all(
+          tabs
+            .filter((t) => t.id)
+            .map((t) =>
+              browser.tabs
+                .sendMessage(t.id!, { type: "RECORD_STATE", recording: false })
+                .catch(() => {})
+            )
+        );
+      } catch {}
+
+      // 현재 활성 탭에서 실행 (새 탭 생성하지 않음)
       let targetTabId: number;
+      const [activeTab] = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (!activeTab?.id) {
+        console.error("No active tab found");
+        return;
+      }
+      targetTabId = activeTab.id;
+      console.log(`Running flow in current tab ${targetTabId}`);
 
-      if (flow.startUrl) {
-        console.log(`Creating new tab for flow execution: ${flow.startUrl}`);
-
-        try {
-          const newTab = await browser.tabs.create({
-            url: flow.startUrl,
-            active: true,
-          });
-
-          if (!newTab.id) {
-            console.error("Failed to create new tab - no ID returned");
-            return;
-          }
-
-          targetTabId = newTab.id;
-          console.log(`New tab created with ID: ${targetTabId}`);
-
-          // 페이지 로드 완료 대기
+      // 실행 전, 첫 번째 스텝의 URL로 이동 (가능한 경우)
+      try {
+        const firstStep = flow.steps[0];
+        const firstUrl =
+          firstStep && "url" in firstStep && (firstStep as any).url
+            ? (firstStep as any).url
+            : undefined;
+        if (typeof firstUrl === "string" && firstUrl.startsWith("http")) {
+          console.log(`Navigating to first step URL: ${firstUrl}`);
+          await browser.tabs.update(targetTabId, { url: firstUrl, active: true });
           await waitForTabLoaded(targetTabId);
-          console.log("Tab loaded, starting flow execution");
-        } catch (error) {
-          console.error("Failed to create new tab:", error);
-          return;
-        }
-
-        // 새 탭 생성 후 추가 대기
-        console.log("Waiting 1000ms for new tab to stabilize...");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        console.log("New tab stabilization completed");
-
-        // 새 탭에 content script 재주입 확인
-        try {
-          await browser.scripting.executeScript({
-            target: { tabId: targetTabId },
-            func: () => {
-              console.log("Content script injected in new tab");
-              return true;
-            },
-            world: "MAIN",
-          });
-          console.log("Content script injection verified");
-        } catch (error) {
-          console.warn(
-            "Content script injection failed, continuing anyway:",
-            error
-          );
-        }
-
-        // 새 탭이 활성화되었는지 확인
-        const createdTab = await browser.tabs.get(targetTabId);
-        if (createdTab.active) {
-          console.log("New tab is active, proceeding with flow execution");
-        } else {
-          console.log("New tab is not active, activating...");
-          await browser.tabs.update(targetTabId, { active: true });
-        }
-
-        // 첫 번째 스텝이 navigate인지 확인하고 URL 이동
-        if (flow.steps.length > 0 && flow.steps[0].type === "navigate") {
-          const firstStep = flow.steps[0];
-          console.log(`First step is navigate to: ${firstStep.url}`);
-
-          // 첫 번째 URL로 이동
-          await browser.tabs.update(targetTabId, { url: firstStep.url });
-          console.log("Navigating to first URL...");
-
-          // 이동 완료 대기
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        } else if (flow.startUrl) {
+          // fallback: startUrl이 있으면 사용
+          console.log(`Navigating to startUrl: ${flow.startUrl}`);
+          await browser.tabs.update(targetTabId, { url: flow.startUrl, active: true });
           await waitForTabLoaded(targetTabId);
-          console.log("First URL navigation completed");
-
-          // 추가 안정화 대기
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          console.log("Ready to start flow execution");
-
-          // 첫 번째 navigate 스텝은 이미 실행했으므로 건너뛰기
-          console.log(
-            "Skipping first navigate step as it was already executed"
-          );
+          await new Promise((resolve) => setTimeout(resolve, 800));
         }
-      } else {
-        // startUrl이 없으면 현재 활성 탭 사용
-        const [activeTab] = await browser.tabs.query({
-          active: true,
-          currentWindow: true,
+      } catch (navErr) {
+        console.warn("Pre-navigation before run failed:", navErr);
+      }
+
+      // content script 확인
+      try {
+        await browser.scripting.executeScript({
+          target: { tabId: targetTabId },
+          func: () => {
+            console.log("Content script ready in current tab");
+            return true;
+          },
+          world: "MAIN",
         });
-
-        if (!activeTab?.id) {
-          console.error("No active tab found");
-          return;
-        }
-
-        targetTabId = activeTab.id;
-        console.log(`Running flow in current tab ${targetTabId}`);
-
-        // 현재 탭에서도 content script 확인
-        try {
-          await browser.scripting.executeScript({
-            target: { tabId: targetTabId },
-            func: () => {
-              console.log("Content script active in current tab");
-              return true;
-            },
-            world: "MAIN",
-          });
-        } catch (error) {
-          console.warn(
-            "Content script not active, may need page refresh:",
-            error
-          );
-        }
+      } catch (error) {
+        console.warn("Content script check failed:", error);
       }
 
       await runFlowInTab(targetTabId, flow);
@@ -250,6 +299,20 @@ async function runFlowInTab(tabId: number, flow: Flow): Promise<void> {
   }
 
   for (let i = startIndex; i < steps.length; i++) {
+    // 중단 플래그 체크
+    if (shouldStopRunning) {
+      console.log("Flow execution stopped by user");
+      browser.runtime
+        .sendMessage({
+          type: "FLOW_FAILED",
+          failedStepIndex: i,
+          error: "Stopped by user",
+        })
+        .catch(() => {});
+      shouldStopRunning = false;
+      return;
+    }
+
     const step = steps[i];
     console.log(`Executing step ${i + 1}:`, step);
 
@@ -302,25 +365,29 @@ async function runFlowInTab(tabId: number, flow: Flow): Promise<void> {
       await new Promise((resolve) => setTimeout(resolve, 20));
       console.log("Tab stabilization completed");
 
-      // 스텝에 저장된 URL과 현재 URL 비교 (도메인만 비교)
+      // 스텝에 저장된 URL과 현재 URL 비교 (전체 URL 비교)
       if ("url" in step && step.url) {
         try {
           const stepUrl = new URL(step.url);
           const currentUrlObj = new URL(currentUrl);
 
-          // 도메인이 다를 때만 네비게이션
-          if (stepUrl.hostname !== currentUrlObj.hostname) {
+          // URL이 다르면 네비게이션 (origin + pathname 비교)
+          const stepUrlPath = stepUrl.origin + stepUrl.pathname;
+          const currentUrlPath = currentUrlObj.origin + currentUrlObj.pathname;
+          
+          if (stepUrlPath !== currentUrlPath) {
             console.log(
-              `Domain mismatch: expected ${stepUrl.hostname}, got ${currentUrlObj.hostname}`
+              `URL mismatch: expected ${stepUrlPath}, got ${currentUrlPath}`
             );
-            console.log("Navigating to correct domain...");
+            console.log("Navigating to step URL...");
 
             await browser.tabs.update(tabId, { url: step.url });
             await waitForTabLoaded(tabId);
             await new Promise((resolve) => setTimeout(resolve, 1000));
+            console.log("Navigation to step URL completed");
           } else {
             console.log(
-              `Same domain: ${stepUrl.hostname}, proceeding with current tab`
+              `Same URL: ${stepUrlPath}, proceeding with current tab`
             );
           }
         } catch (error) {
@@ -348,20 +415,37 @@ async function runFlowInTab(tabId: number, flow: Flow): Promise<void> {
         continue;
       }
 
+      const execTarget: any = { tabId } as { tabId: number; frameIds?: number[] };
+      if ((step as any)._frameId !== undefined) {
+        execTarget.frameIds = [(step as any)._frameId as number];
+      }
       const result = await browser.scripting.executeScript({
-        target: { tabId },
+        target: execTarget,
         func: async (stepToRun: Step) => {
           function querySelector(sel: string): Element | null {
             return document.querySelector(sel);
+          }
+
+          async function scrollIntoViewCentered(el: Element) {
+            try {
+              (el as HTMLElement).scrollIntoView({
+                block: "center",
+                inline: "center",
+                behavior: "smooth",
+              });
+              await new Promise((r) => setTimeout(r, 200));
+            } catch {}
           }
 
           switch (stepToRun.type) {
             case "waitFor": {
               const deadline = Date.now() + (stepToRun.timeoutMs ?? 5000);
               return new Promise<void>((resolve, reject) => {
-                const interval = setInterval(() => {
-                  if (querySelector(stepToRun.selector)) {
+                const interval = setInterval(async () => {
+                  const el = querySelector(stepToRun.selector);
+                  if (el) {
                     clearInterval(interval);
+                    await scrollIntoViewCentered(el);
                     resolve();
                   } else if (Date.now() > deadline) {
                     clearInterval(interval);
@@ -377,6 +461,7 @@ async function runFlowInTab(tabId: number, flow: Flow): Promise<void> {
               ) as HTMLElement | null;
               if (!el)
                 throw new Error("Element not found: " + stepToRun.selector);
+              await scrollIntoViewCentered(el);
               el.click();
               return { success: true, type: "click" };
             }
@@ -395,6 +480,7 @@ async function runFlowInTab(tabId: number, flow: Flow): Promise<void> {
                 (stepToRun as any).text ||
                 "";
 
+              await scrollIntoViewCentered(el);
               // 요소에 포커스 및 클릭 (더 확실한 포커스)
               el.focus();
               el.click();
@@ -469,7 +555,88 @@ async function runFlowInTab(tabId: number, flow: Flow): Promise<void> {
                 new Event("blur", { bubbles: true, cancelable: true })
               );
 
+              // 요청된 경우 Enter 제출 처리
+              if ((stepToRun as any).submit) {
+                const enterDown = new KeyboardEvent("keydown", {
+                  key: "Enter",
+                  code: "Enter",
+                  keyCode: 13,
+                  which: 13,
+                  bubbles: true,
+                  cancelable: true,
+                });
+                const enterPress = new KeyboardEvent("keypress", {
+                  key: "Enter",
+                  code: "Enter",
+                  keyCode: 13,
+                  which: 13,
+                  bubbles: true,
+                  cancelable: true,
+                });
+                const enterUp = new KeyboardEvent("keyup", {
+                  key: "Enter",
+                  code: "Enter",
+                  keyCode: 13,
+                  which: 13,
+                  bubbles: true,
+                  cancelable: true,
+                });
+                el.dispatchEvent(enterDown);
+                el.dispatchEvent(enterPress);
+                el.dispatchEvent(enterUp);
+                // form이 있으면 submit 시도
+                const form = el.form;
+                if (form) {
+                  try {
+                    form.requestSubmit ? form.requestSubmit() : form.submit();
+                  } catch {}
+                }
+                await new Promise((resolve) => setTimeout(resolve, 200));
+              }
+
               return { success: true, type: "type", value: el.value };
+            }
+
+            case "screenshot": {
+              const el = querySelector(stepToRun.selector) as any;
+              if (!el)
+                throw new Error("Element not found: " + stepToRun.selector);
+              await scrollIntoViewCentered(el);
+              try {
+                const rect = el.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) {
+                  return { success: true, type: "screenshot", value: null };
+                }
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d");
+                if (!ctx) return { success: true, type: "screenshot", value: null };
+                canvas.width = Math.max(rect.width, 200);
+                canvas.height = Math.max(rect.height, 100);
+                ctx.fillStyle = "#f8fafc";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.strokeStyle = "#e2e8f0";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+                ctx.fillStyle = "#1e293b";
+                ctx.font = "bold 14px system-ui";
+                ctx.textAlign = "center";
+                ctx.fillText(el.tagName.toUpperCase(), canvas.width / 2, canvas.height / 2);
+                const screenshotData = {
+                  type: "ELEMENT_SCREENSHOT",
+                  stepIndex: -1,
+                  screenshot: canvas.toDataURL("image/png"),
+                  elementInfo: {
+                    tagName: el.tagName.toLowerCase(),
+                    selector: (stepToRun as any).selector,
+                    text:
+                      el.innerText?.substring(0, 100) ||
+                      el.textContent?.substring(0, 100) ||
+                      "",
+                  },
+                };
+                browser.runtime.sendMessage(screenshotData).catch(() => {});
+              } catch {}
+              return { success: true, type: "screenshot" };
             }
 
             case "select": {
@@ -485,6 +652,7 @@ async function runFlowInTab(tabId: number, flow: Flow): Promise<void> {
                 );
               }
 
+              await scrollIntoViewCentered(el);
               const selectValue = (stepToRun as any).value;
 
               // value로 매칭 시도
@@ -528,6 +696,7 @@ async function runFlowInTab(tabId: number, flow: Flow): Promise<void> {
               if (!el)
                 throw new Error("Element not found: " + stepToRun.selector);
 
+              await scrollIntoViewCentered(el);
               const prop = stepToRun.prop ?? "innerText";
               const value = el[prop];
 
@@ -768,6 +937,32 @@ export default defineBackground(() => {
         await browser.sidePanel.open({ tabId: tab.id });
       } catch (error) {
         console.log("사이드패널 열기 실패 (정상 동작):", error);
+      }
+    }
+  });
+
+  // 브라우저 시작 시 현재 탭에 사이드패널 열기
+  browser.runtime.onStartup.addListener(async () => {
+    try {
+      const [tab] = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (tab?.id) {
+        await browser.sidePanel.open({ tabId: tab.id });
+      }
+    } catch (error) {
+      console.log("onStartup: side panel open skipped:", error);
+    }
+  });
+
+  // 탭 업데이트(네비게이션 포함) 시, 로드 완료 후 현재 레코딩 상태 브로드캐스트
+  browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+    if (changeInfo.status === "complete") {
+      if (isRecording) {
+        browser.tabs
+          .sendMessage(tabId, { type: "RECORD_STATE", recording: true })
+          .catch(() => {});
       }
     }
   });

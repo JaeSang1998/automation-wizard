@@ -1,11 +1,12 @@
 // 레코드 가능한 액션 타입
-export type Step =
+type CoreStep =
   | { type: "click"; selector: string; url?: string; screenshot?: string }
   | {
       type: "type";
       selector: string;
       text: string;
       originalText?: string; // 보안을 위해 마스킹된 원본 텍스트
+      submit?: boolean; // 입력 후 Enter 제출 여부
       url?: string;
       screenshot?: string;
     }
@@ -30,8 +31,20 @@ export type Step =
       url?: string;
       screenshot?: string;
     }
+  | {
+      type: "screenshot";
+      selector: string;
+      url?: string;
+      screenshot: string;
+    }
   | { type: "navigate"; url: string }
   | { type: "waitForNavigation"; timeoutMs?: number };
+
+// 각 스텝에 프레임 메타데이터를 선택적으로 포함
+export type Step = CoreStep & {
+  _frameId?: number; // 기록된 프레임 ID (브라우저 frameId)
+  _frameUrl?: string; // 기록 당시 프레임 URL
+};
 
 // 플로우 전체 구조
 export interface Flow {
@@ -86,6 +99,21 @@ export type ElementScreenshotMessage = {
   };
 };
 
+// 레코딩 관련 메시지
+export type StartRecordMessage = { type: "START_RECORD" };
+export type StopRecordMessage = { type: "STOP_RECORD" };
+export type StopRunMessage = { type: "STOP_RUN" };
+export type PlayEventsToContentMessage = {
+  type: "PLAY_EVENTS";
+  events: any[]; // deprecated: Step 기반 재생을 권장
+};
+export type RecordStateUpdatedMessage = {
+  type: "RECORD_STATE";
+  recording: boolean;
+};
+export type GetRecordStateMessage = { type: "GET_RECORD_STATE" };
+export type UndoLastStepMessage = { type: "UNDO_LAST_STEP" };
+
 export type Message =
   | RecordStepMessage
   | TogglePickerMessage
@@ -96,4 +124,11 @@ export type Message =
   | StepExecutingMessage
   | StepCompletedMessage
   | FlowFailedMessage
-  | ElementScreenshotMessage;
+  | ElementScreenshotMessage
+  | StartRecordMessage
+  | StopRecordMessage
+  | StopRunMessage
+  | PlayEventsToContentMessage
+  | RecordStateUpdatedMessage
+  | GetRecordStateMessage
+  | UndoLastStepMessage;

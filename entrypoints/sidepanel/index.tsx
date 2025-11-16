@@ -15,7 +15,8 @@ function SidePanelApp() {
   const [flow, setFlow] = useState<Flow | null>(null);
   const [endpoint, setEndpoint] = useState("https://api.example.com/flows");
   const [startUrl, setStartUrl] = useState("");
-  const [pickerOn, setPickerOn] = useState(true);
+  const [pickerOn, setPickerOn] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [executingStep, setExecutingStep] = useState<{
     step: Step;
@@ -44,11 +45,15 @@ function SidePanelApp() {
         | StepCompletedMessage
         | FlowFailedMessage
         | ElementScreenshotMessage
+        | { type: "RECORD_STATE"; recording: boolean }
     ) => {
       if (msg.type === "FLOW_UPDATED") {
         setFlow(msg.flow);
         setStatusMessage(`Step added! Total: ${msg.flow.steps.length}`);
         setTimeout(() => setStatusMessage(""), 3000);
+      } else if (msg.type === "RECORD_STATE") {
+        setRecording(msg.recording);
+        console.log("Recording state updated in sidepanel:", msg.recording);
       } else if (msg.type === "SENT_OK") {
         setStatusMessage("Successfully sent to backend!");
         setTimeout(() => setStatusMessage(""), 3000);
@@ -113,40 +118,68 @@ function SidePanelApp() {
   };
 
   const handleRun = async () => {
+    // 이미 실행 중이면 중단
+    if (executingStep) {
+      console.log("Stopping flow execution...");
+      await browser.runtime.sendMessage({ type: "STOP_RUN" });
+      setExecutingStep(null);
+      setStatusMessage("Flow execution stopped");
+      setTimeout(() => setStatusMessage(""), 2000);
+      return;
+    }
+
+    console.log("handleRun clicked!");
     const [tab] = await browser.tabs.query({
       active: true,
       currentWindow: true,
     });
-    if (!tab.id) return;
+    console.log("Current tab:", tab);
 
-    // 실행 중에는 픽커 끄기
-    await browser.tabs.sendMessage(tab.id, {
-      type: "TOGGLE_PICKER",
-      on: false,
-    });
-
-    // 실행 상태 초기화
-    setExecutingStep(null);
-    setCompletedSteps(new Set());
-    setStatusMessage("Starting flow execution...");
+    if (!tab.id) {
+      console.error("No tab ID found!");
+      setStatusMessage("Error: No active tab found");
+      return;
+    }
 
     try {
+      // 실행 중에는 픽커 끄기
+      console.log("Turning off picker...");
+      await browser.tabs
+        .sendMessage(tab.id, {
+          type: "TOGGLE_PICKER",
+          on: false,
+        })
+        .catch((e) => console.warn("Failed to toggle picker:", e));
+
+      // 녹화 중단
+      console.log("Stopping record...");
+      await browser.runtime.sendMessage({ type: "STOP_RECORD" });
+
+      // 실행 상태 초기화
+      setExecutingStep(null);
+      setCompletedSteps(new Set());
+      setStatusMessage("Starting flow execution...");
+
+      console.log("Sending RUN_FLOW message...");
       await browser.runtime.sendMessage({ type: "RUN_FLOW" });
+      console.log("Flow completed!");
       setStatusMessage("Flow completed!");
       setExecutingStep(null);
     } catch (error) {
-      setStatusMessage("Flow execution failed!");
+      console.error("Flow execution error:", error);
+      setStatusMessage(`Flow execution failed: ${error}`);
       setExecutingStep(null);
-      console.error(error);
     }
 
     // 다시 픽커 켜기
     setTimeout(async () => {
       if (tab.id) {
-        await browser.tabs.sendMessage(tab.id, {
-          type: "TOGGLE_PICKER",
-          on: pickerOn,
-        });
+        await browser.tabs
+          .sendMessage(tab.id, {
+            type: "TOGGLE_PICKER",
+            on: pickerOn,
+          })
+          .catch((e) => console.warn("Failed to restore picker:", e));
       }
       setStatusMessage("");
     }, 2000);
@@ -166,6 +199,20 @@ function SidePanelApp() {
       setStatusMessage("Failed to send!");
       console.error(error);
     }
+  };
+
+  const handleStartRecord = async () => {
+    setRecording(true);
+    setStatusMessage("Recording started. Click on the page to capture steps.");
+    setTimeout(() => setStatusMessage(""), 2000);
+    await browser.runtime.sendMessage({ type: "START_RECORD" });
+  };
+
+  const handleStopRecord = async () => {
+    setRecording(false);
+    setStatusMessage("Recording stopped.");
+    setTimeout(() => setStatusMessage(""), 2000);
+    await browser.runtime.sendMessage({ type: "STOP_RECORD" });
   };
 
   const handleTogglePicker = async () => {
@@ -236,6 +283,18 @@ function SidePanelApp() {
     setCompletedSteps(newCompletedSteps);
   };
 
+  const moveStep = async (fromIndex: number, toIndex: number) => {
+    if (!flow) return;
+    if (toIndex < 0 || toIndex >= flow.steps.length) return;
+    const steps = [...flow.steps];
+    const [moved] = steps.splice(fromIndex, 1);
+    steps.splice(toIndex, 0, moved);
+    const updatedFlow: Flow = { ...flow, steps };
+    await browser.storage.local.set({ flow: updatedFlow });
+    setFlow(updatedFlow);
+    setStatusMessage("Step order updated");
+    setTimeout(() => setStatusMessage(""), 1200);
+  };
   const handleUpdateStartUrl = async () => {
     if (!flow) return;
 
@@ -281,6 +340,8 @@ function SidePanelApp() {
         return `${index + 1}. Extract ${
           (step as any).prop || "innerText"
         } from ${step.selector}${urlInfo}`;
+      case "screenshot":
+        return `${index + 1}. Screenshot of ${step.selector}${urlInfo}`;
       case "waitFor":
         return `${index + 1}. Wait for ${step.selector} (${
           (step as any).timeoutMs || 5000
@@ -455,7 +516,7 @@ function SidePanelApp() {
         />
       </div>
 
-      {/* 액션 버튼들 */}
+      {/* 레코딩/실행 */}
       <div
         style={{
           display: "grid",
@@ -465,20 +526,48 @@ function SidePanelApp() {
         }}
       >
         <button
-          onClick={handleRun}
-          disabled={!flow || flow.steps.length === 0}
+          onClick={recording ? handleStopRecord : handleStartRecord}
+          disabled={!!executingStep}
           style={{
             padding: "10px 16px",
-            background: flow && flow.steps.length > 0 ? "#3b82f6" : "#9ca3af",
+            background: executingStep
+              ? "#9ca3af"
+              : recording
+              ? "#ef4444"
+              : "#22c55e",
             color: "white",
             border: "none",
             borderRadius: "6px",
-            cursor: flow && flow.steps.length > 0 ? "pointer" : "not-allowed",
+            cursor: executingStep ? "not-allowed" : "pointer",
+            fontSize: "13px",
+            fontWeight: "500",
+            opacity: executingStep ? 0.6 : 1,
+          }}
+        >
+          {recording ? "■ Stop" : "● Record"}
+        </button>
+        <button
+          onClick={handleRun}
+          disabled={!executingStep && (!flow || flow.steps.length === 0)}
+          style={{
+            padding: "10px 16px",
+            background: executingStep
+              ? "#ef4444"
+              : !flow || flow.steps.length === 0
+              ? "#9ca3af"
+              : "#3b82f6",
+            color: "white",
+            border: "none",
+            borderRadius: "6px",
+            cursor:
+              !executingStep && (!flow || flow.steps.length === 0)
+                ? "not-allowed"
+                : "pointer",
             fontSize: "13px",
             fontWeight: "500",
           }}
         >
-          ▶ Run
+          {executingStep ? "■ Stop Run" : "▶ Run"}
         </button>
 
         <button
@@ -531,7 +620,7 @@ function SidePanelApp() {
         </button>
       </div>
 
-      {/* 레코드된 스텝 리스트 */}
+      {/* Recorded Steps - enhanced visibility and ordering */}
       <div
         style={{
           background: "white",
@@ -540,16 +629,28 @@ function SidePanelApp() {
           padding: "12px",
         }}
       >
-        <h3
+        <div
           style={{
-            fontSize: "14px",
-            fontWeight: "600",
-            marginBottom: "12px",
-            color: "#374151",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: "10px",
           }}
         >
-          Recorded Steps ({flow?.steps.length || 0})
-        </h3>
+          <h3
+            style={{
+              fontSize: "14px",
+              fontWeight: "600",
+              color: "#111827",
+              margin: 0,
+            }}
+          >
+            Recorded Steps ({flow?.steps.length || 0})
+          </h3>
+          <span style={{ fontSize: "11px", color: "#6b7280" }}>
+            Use ↑/↓ to reorder steps
+          </span>
+        </div>
 
         {!flow || flow.steps.length === 0 ? (
           <p
@@ -636,39 +737,113 @@ function SidePanelApp() {
 
                   <div
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      marginBottom: "8px",
+                      display: "grid",
+                      gridTemplateColumns: "auto 1fr auto",
+                      alignItems: "center",
                       gap: "8px",
+                      marginBottom: "8px",
                     }}
                   >
-                    <div style={{ flex: 1 }}>
-                      {getStepDescription(step, index)}
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteStep(index);
-                      }}
-                      title="Delete this step"
+                    <div
                       style={{
-                        padding: "4px 8px",
-                        background: "#ef4444",
+                        width: "22px",
+                        height: "22px",
+                        borderRadius: "9999px",
+                        background: "#6366f1",
                         color: "white",
-                        border: "none",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                        fontSize: "11px",
-                        fontWeight: "500",
-                        flexShrink: 0,
                         display: "flex",
                         alignItems: "center",
-                        gap: "4px",
+                        justifyContent: "center",
+                        fontSize: "11px",
+                        fontWeight: 700,
                       }}
                     >
-                      🗑️ Delete
-                    </button>
+                      {index + 1}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "#111827",
+                          fontWeight: 500,
+                          marginBottom: "2px",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                        title={getStepDescription(step, index)}
+                      >
+                        {getStepDescription(step, index)}
+                      </div>
+                      {"selector" in step && (step as any).selector && (
+                        <div
+                          style={{
+                            fontSize: "10px",
+                            color: "#6b7280",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                          }}
+                          title={(step as any).selector}
+                        >
+                          {(step as any).selector}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        onClick={() => moveStep(index, index - 1)}
+                        title="Move up"
+                        style={{
+                          padding: "4px 6px",
+                          background: "#e5e7eb",
+                          border: "none",
+                          borderRadius: "4px",
+                          cursor: index === 0 ? "not-allowed" : "pointer",
+                          opacity: index === 0 ? 0.5 : 1,
+                          fontSize: "11px",
+                        }}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        onClick={() => moveStep(index, index + 1)}
+                        title="Move down"
+                        style={{
+                          padding: "4px 6px",
+                          background: "#e5e7eb",
+                          border: "none",
+                          borderRadius: "4px",
+                          cursor:
+                            index === (flow?.steps.length || 1) - 1
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity:
+                            index === (flow?.steps.length || 1) - 1 ? 0.5 : 1,
+                          fontSize: "11px",
+                        }}
+                      >
+                        ↓
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteStep(index);
+                        }}
+                        title="Delete this step"
+                        style={{
+                          padding: "4px 6px",
+                          background: "#ef4444",
+                          color: "white",
+                          border: "none",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          fontSize: "11px",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
 
                   {/* 레코드된 스텝의 스크린샷 표시 */}

@@ -334,6 +334,20 @@ export default function HoverToolbar({
     });
   };
 
+  const handleScreenshot = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const screenshot = await captureElementScreenshot(target, selector);
+    if (screenshot) {
+      onRecord({
+        type: "screenshot",
+        selector,
+        url: window.location.href,
+        screenshot,
+      } as any);
+    }
+  };
+
   const handleSelect = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -604,6 +618,28 @@ export default function HoverToolbar({
           }}
         >
           👆 Click
+        </button>
+        <button
+          onClick={handleScreenshot}
+          style={{
+            padding: "6px 12px",
+            border: "none",
+            borderRadius: "4px",
+            background: "#0ea5e9",
+            color: "white",
+            cursor: "pointer",
+            fontSize: "12px",
+            fontWeight: "500",
+            transition: "all 0.2s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "#0284c7";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "#0ea5e9";
+          }}
+        >
+          📸 Shot
         </button>
         <button
           onClick={handleType}
