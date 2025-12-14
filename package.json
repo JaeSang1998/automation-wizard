@@ -6,5 +6,11 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test"
   },
-  "packageManager": "pnpm@9.0.0" 
+  "packageManager": "pnpm@9.0.0",
+  "devDependencies": {
+    "playwright": "^1.40.0"
+  },
+  "dependencies": {
+    "@typescript/native-preview": "7.0.0-dev.20251213.1"
+  }
 }
