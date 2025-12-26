@@ -2,9 +2,9 @@ import express from "express";
 import cors from "cors";
 import { chromium } from "playwright";
 import puppeteer from "puppeteer";
-import { PlaywrightFlowRunner } from "@automation-wizard/playwright";
-import { PuppeteerFlowRunner } from "@automation-wizard/puppeteer";
-import type { Flow } from "@automation-wizard/core";
+import { PlaywrightFlowRunner } from "@auto-wiz/playwright";
+import { PuppeteerFlowRunner } from "@auto-wiz/puppeteer";
+import type { Flow } from "@auto-wiz/core";
 
 const app = express();
 const PORT = 3001;

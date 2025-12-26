@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { Flow } from "@automation-wizard/core";
+import type { Flow } from "@auto-wiz/core";
 import { mockStorageGet, mockStorageSet, resetAllMocks } from "../setup";
 
 describe("Background Storage Operations", () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import type { Flow, Step } from "@automation-wizard/core";
-import { executeStep } from "@automation-wizard/dom";
+import type { Flow, Step } from "@auto-wiz/core";
+import { executeStep } from "@auto-wiz/dom";
 
 /**
  * Step 실행 로직 테스트

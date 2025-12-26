@@ -2,7 +2,7 @@
   "name": "automation-wizard-monorepo",
   "private": true,
   "scripts": {
-    "dev": "pnpm -F @automation-wizard/extension dev",
+    "dev": "pnpm -F @auto-wiz/extension dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "release": "changeset publish"

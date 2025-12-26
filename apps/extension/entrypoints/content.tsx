@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
 import ReactDOM from "react-dom/client";
 import HoverToolbar from "./content/HoverToolbar";
-import type { Step, TogglePickerMessage } from "@automation-wizard/core";
+import type { Step, TogglePickerMessage } from "@auto-wiz/core";
 import { useRecording } from "../hooks/useRecording";
 import { useElementInspector } from "../hooks/useElementInspector";
-import { DomFlowRunner } from "@automation-wizard/dom";
-import type { StepExecutingMessage } from "@automation-wizard/core";
+import { DomFlowRunner } from "@auto-wiz/dom";
+import type { StepExecutingMessage } from "@auto-wiz/core";
 
 const runner = new DomFlowRunner();
 

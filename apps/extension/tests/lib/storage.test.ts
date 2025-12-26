@@ -10,8 +10,8 @@ import {
   removeStep,
   updateStep,
   updateFlow,
-} from "@automation-wizard/core";
-import type { Flow, Step } from "@automation-wizard/core";
+} from "@auto-wiz/core";
+import type { Flow, Step } from "@auto-wiz/core";
 
 describe("Flow Storage (Memory Adapter)", () => {
   beforeEach(async () => {

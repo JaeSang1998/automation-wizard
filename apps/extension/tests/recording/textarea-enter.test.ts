@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import type { Step } from "@automation-wizard/core";
+import type { Step } from "@auto-wiz/core";
 
 const getSimpleSelector = (el: Element): string => {
   if (!(el instanceof Element)) return "";

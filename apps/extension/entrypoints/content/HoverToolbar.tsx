@@ -10,8 +10,8 @@ import {
   ChevronUp,
   ChevronDown,
 } from "lucide-react";
-import type { Step } from "@automation-wizard/core";
-import { makeSelector, generateRobustLocator } from "@automation-wizard/dom";
+import type { Step } from "@auto-wiz/core";
+import { makeSelector, generateRobustLocator } from "@auto-wiz/dom";
 
 interface HoverToolbarProps {
   x: number;

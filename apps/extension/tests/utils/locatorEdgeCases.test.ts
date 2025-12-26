@@ -12,8 +12,8 @@ import {
   findByLocator,
   findByText,
   findByLabelText,
-} from "@automation-wizard/dom"; // Note: locatorUtils might not be exported from core index.ts yet? I should check.
-import type { ElementLocator } from "@automation-wizard/core";
+} from "@auto-wiz/dom"; // Note: locatorUtils might not be exported from core index.ts yet? I should check.
+import type { ElementLocator } from "@auto-wiz/core";
 
 describe("Locator Edge Cases", () => {
   let container: HTMLDivElement;

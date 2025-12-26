@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import type { Step } from "@automation-wizard/core";
+import type { Step } from "@auto-wiz/core";
 
 interface StepExecutionState {
   step: Step;

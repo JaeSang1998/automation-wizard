@@ -21,7 +21,7 @@
  * - 텍스트 내용 검색
  */
 
-import type { ElementLocator } from "@automation-wizard/core";
+import type { ElementLocator } from "@auto-wiz/core";
 
 /**
  * 단순 selector 생성 (빠른 선택용)

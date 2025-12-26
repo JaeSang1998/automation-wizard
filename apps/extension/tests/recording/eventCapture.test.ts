@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { Step } from "@automation-wizard/core";
+import type { Step } from "@auto-wiz/core";
 
 /**
  * 이벤트 캡처 및 레코딩 로직 테스트

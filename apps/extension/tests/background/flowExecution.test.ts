@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import type { Flow, Step } from "@automation-wizard/core";
+import type { Flow, Step } from "@auto-wiz/core";
 import { mockTabsQuery, resetAllMocks } from "../setup";
 
 /**

@@ -14,8 +14,8 @@ import {
   findByText,
   isInteractable,
   waitForLocator,
-} from "@automation-wizard/dom";
-import type { ElementLocator } from "@automation-wizard/core";
+} from "@auto-wiz/dom";
+import type { ElementLocator } from "@auto-wiz/core";
 
 describe("generateRobustLocator", () => {
   let container: HTMLDivElement;

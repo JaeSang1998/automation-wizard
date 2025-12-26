@@ -1,5 +1,5 @@
 {
-  "name": "@automation-wizard/extension",
+  "name": "@auto-wiz/extension",
   "description": "manifest.json description",
   "private": true,
   "version": "0.0.0",
@@ -22,9 +22,9 @@
     "lucide-react": "^0.553.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "@automation-wizard/core": "workspace:*",
-    "@automation-wizard/dom": "workspace:*",
-    "@automation-wizard/ui": "workspace:*"
+    "@auto-wiz/core": "workspace:*",
+    "@auto-wiz/dom": "workspace:*",
+    "@auto-wiz/ui": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",

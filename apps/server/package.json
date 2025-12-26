@@ -11,9 +11,9 @@
     "cors": "^2.8.5",
     "playwright": "^1.40.0",
     "puppeteer": "^23.0.0",
-    "@automation-wizard/core": "workspace:*",
-    "@automation-wizard/playwright": "workspace:*",
-    "@automation-wizard/puppeteer": "workspace:*"
+    "@auto-wiz/core": "workspace:*",
+    "@auto-wiz/playwright": "workspace:*",
+    "@auto-wiz/puppeteer": "workspace:*"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

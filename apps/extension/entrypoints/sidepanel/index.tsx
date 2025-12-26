@@ -5,16 +5,16 @@ import type {
   Flow,
   FlowUpdatedMessage,
   SentOkMessage,
-} from "@automation-wizard/core";
+} from "@auto-wiz/core";
 import { useFlowExecution } from "../../hooks/useFlowExecution";
 import {
   getFlow,
   saveFlow,
   clearFlow,
   removeStep,
-} from "@automation-wizard/core";
-import { FlowStepItem } from "@automation-wizard/ui";
-import { FlowControls } from "@automation-wizard/ui";
+} from "@auto-wiz/core";
+import { FlowStepItem } from "@auto-wiz/ui";
+import { FlowControls } from "@auto-wiz/ui";
 
 /**
  * SidePanel 메인 컴포넌트

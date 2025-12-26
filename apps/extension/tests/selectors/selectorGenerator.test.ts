@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { makeSelector, generateRobustLocator } from "@automation-wizard/dom";
+import { makeSelector, generateRobustLocator } from "@auto-wiz/dom";
 
 describe("Selector Generation (Real Implementation)", () => {
   beforeEach(() => {

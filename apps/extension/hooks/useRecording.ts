@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import type { Step } from "@automation-wizard/core";
+import type { Step } from "@auto-wiz/core";
 import {
   getSimpleSelector,
   generateRobustLocator,
-} from "@automation-wizard/dom";
+} from "@auto-wiz/dom";
 
 interface UseRecordingOptions {
   autoCapture?: boolean;

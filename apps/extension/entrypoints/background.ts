@@ -6,7 +6,7 @@ import type {
   SendToBackendMessage,
   StepExecutingMessage,
   StepCompletedMessage,
-} from "@automation-wizard/core";
+} from "@auto-wiz/core";
 
 // 플로우 가져오기 (없으면 새로 생성)
 async function getFlow(): Promise<Flow> {

@@ -4,8 +4,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { generateRobustLocator } from "@automation-wizard/dom";
-import { findByLocator, findByText } from "@automation-wizard/dom";
+import { generateRobustLocator } from "@auto-wiz/dom";
+import { findByLocator, findByText } from "@auto-wiz/dom";
 
 describe("Locator Performance", () => {
   let container: HTMLDivElement;
