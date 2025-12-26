@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import type { Flow, Step } from "@automation-wizard/core";
+import type { Flow, Step } from "@auto-wiz/core";
 import { mockStorageGet, mockStorageSet, resetAllMocks } from "../setup";
 
 // 테스트할 헬퍼 함수들을 별도 파일로 분리하는 것이 좋습니다

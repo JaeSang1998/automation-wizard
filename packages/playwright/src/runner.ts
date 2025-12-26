@@ -6,7 +6,7 @@ import {
   type Flow,
   type Step,
   type ElementLocator,
-} from "@automation-wizard/core";
+} from "@auto-wiz/core";
 import { Page, Locator } from "playwright";
 
 export class PlaywrightFlowRunner implements FlowRunner<Page> {

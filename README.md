@@ -1,6 +1,6 @@
-# Automation Wizard
+# Auto Wiz
 
-**Automation Wizard** is a browser extension designed to record, edit, and replay user interactions on the web. It features a robust locator system that ensures reliable element selection even when page structures change.
+**Auto Wiz** is a browser extension designed to record, edit, and replay user interactions on the web. It features a robust locator system that ensures reliable element selection even when page structures change.
 
 ## 🏗️ Monorepo Structure
 
@@ -71,8 +71,8 @@ Changes in `packages/core` or `packages/ui` will be automatically reflected in t
 To strictly type-check or build a specific package:
 
 ```bash
-pnpm --filter @automation-wizard/core build
-pnpm --filter @automation-wizard/ui build
+pnpm --filter @auto-wiz/core build
+pnpm --filter @auto-wiz/ui build
 ```
 
 ## ✨ Features

@@ -6,7 +6,7 @@ import type {
   RunFlowMessage,
   RecordStepMessage,
   Step,
-} from "@automation-wizard/core";
+} from "@auto-wiz/core";
 import { mockRuntimeSendMessage, resetAllMocks } from "../setup";
 
 describe("Background Message Handling", () => {

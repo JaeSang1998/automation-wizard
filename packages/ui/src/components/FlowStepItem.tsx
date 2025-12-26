@@ -11,7 +11,7 @@ import {
   ChevronUp,
   ChevronDown,
 } from "lucide-react";
-import type { Step } from "@automation-wizard/core";
+import type { Step } from "@auto-wiz/core";
 
 interface FlowStepItemProps {
   step: Step;

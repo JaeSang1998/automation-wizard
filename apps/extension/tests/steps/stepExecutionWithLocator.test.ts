@@ -12,8 +12,8 @@ import {
   executeExtractStep,
   executeWaitForStep,
   generateRobustLocator,
-} from "@automation-wizard/dom";
-import { Step } from "@automation-wizard/core";
+} from "@auto-wiz/dom";
+import { Step } from "@auto-wiz/core";
 
 describe("Step Execution with Locator Integration", () => {
   let container: HTMLDivElement;

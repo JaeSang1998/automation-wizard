@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { getSimpleSelector } from "@automation-wizard/dom";
+import { getSimpleSelector } from "@auto-wiz/dom";
 
 interface UseElementInspectorOptions {
   enabled: boolean;

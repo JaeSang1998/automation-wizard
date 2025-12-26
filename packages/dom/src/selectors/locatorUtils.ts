@@ -3,7 +3,7 @@
  * Playwright/Maestro 스타일의 텍스트 기반, role 기반 매칭
  */
 
-import type { ElementLocator } from "@automation-wizard/core";
+import type { ElementLocator } from "@auto-wiz/core";
 
 /**
  * 텍스트 정규화 (공백, 대소문자 무시)

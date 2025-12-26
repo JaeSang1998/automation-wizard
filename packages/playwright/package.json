@@ -1,5 +1,5 @@
 {
-  "name": "@automation-wizard/playwright",
+  "name": "@auto-wiz/playwright",
   "version": "1.0.0",
   "license": "MIT",
   "author": "JaeSang",
@@ -26,7 +26,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@automation-wizard/core": "workspace:*",
+    "@auto-wiz/core": "workspace:*",
     "playwright": "^1.40.0"
   },
   "devDependencies": {

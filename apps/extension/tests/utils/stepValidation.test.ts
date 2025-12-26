@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Step } from "@automation-wizard/core";
+import type { Step } from "@auto-wiz/core";
 
 describe("Step Validation", () => {
   describe("Click step validation", () => {

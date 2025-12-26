@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import type { Step } from "@automation-wizard/core";
+import type { Step } from "@auto-wiz/core";
 
 // 간단 셀렉터 (기존 테스트와 동일 패턴)
 const getSimpleSelector = (el: Element): string => {

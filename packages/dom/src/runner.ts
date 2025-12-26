@@ -5,7 +5,7 @@ import {
   type RunnerOptions,
   type Flow,
   type Step,
-} from "@automation-wizard/core";
+} from "@auto-wiz/core";
 import { executeStep } from "./steps/stepExecution";
 
 export class DomFlowRunner implements FlowRunner<void> {

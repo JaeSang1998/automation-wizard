@@ -4,11 +4,11 @@
     "module": "CommonJS",
     "moduleResolution": "node",
     "paths": {
-      "@automation-wizard/core": ["./packages/core/src/index.ts"],
-      "@automation-wizard/dom": ["./packages/dom/src/index.ts"],
-      "@automation-wizard/playwright": ["./packages/playwright/src/index.ts"],
-      "@automation-wizard/puppeteer": ["./packages/puppeteer/src/index.ts"],
-      "@automation-wizard/ui": ["./packages/ui/src/index.ts"]
+      "@auto-wiz/core": ["./packages/core/src/index.ts"],
+      "@auto-wiz/dom": ["./packages/dom/src/index.ts"],
+      "@auto-wiz/playwright": ["./packages/playwright/src/index.ts"],
+      "@auto-wiz/puppeteer": ["./packages/puppeteer/src/index.ts"],
+      "@auto-wiz/ui": ["./packages/ui/src/index.ts"]
     },
     "strict": true,
     "esModuleInterop": true,

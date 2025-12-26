@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 import { PlaywrightFlowRunner } from "./src/runner";
-import type { Flow } from "@automation-wizard/core";
+import type { Flow } from "@auto-wiz/core";
 
 async function main() {
   console.log("🚀 Starting Playwright Flow Runner Example");

@@ -1,4 +1,4 @@
-import type { Step } from "@automation-wizard/core";
+import type { Step } from "@auto-wiz/core";
 import { querySelector } from "../selectors/selectorGenerator";
 import { waitForLocator, isInteractable } from "../selectors/locatorUtils";
 

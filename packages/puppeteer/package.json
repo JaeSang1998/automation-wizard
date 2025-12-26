@@ -1,5 +1,5 @@
 {
-  "name": "@automation-wizard/puppeteer",
+  "name": "@auto-wiz/puppeteer",
   "version": "1.0.0",
   "license": "MIT",
   "author": "JaeSang",
@@ -26,7 +26,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@automation-wizard/core": "workspace:*",
+    "@auto-wiz/core": "workspace:*",
     "puppeteer": "^23.0.0"
   },
   "devDependencies": {
